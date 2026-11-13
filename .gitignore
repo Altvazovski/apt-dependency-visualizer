@@ -1,0 +1,22 @@
+# Служебные файлы Python и локальное окружение.
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Настройки редактора и результаты проверок.
+.idea/
+.vscode/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Архивы и служебные файлы Windows.
+*.zip
+*.7z
+*.rar
+Thumbs.db
+.DS_Store
