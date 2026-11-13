@@ -29,7 +29,6 @@ def find_reverse_dependencies(graph, package, excluded_substring=""):
     reachable = build_dependency_graph(
         package, reversed_graph.__getitem__, excluded_substring
     )
-    # Не выводим цель среди собственных потребителей даже при цикле.
     return [name for name in reachable if name != package]
 
 
@@ -44,6 +43,5 @@ def get_apt_reverse_dependencies(repository, package, excluded_substring=""):
     for name, record in records.items():
         if excluded_substring and excluded_substring in name:
             continue
-        # Разбираем все разрешённые пакеты, а не только потомков цели.
         graph[name] = get_dependency_names(record)
     return find_reverse_dependencies(graph, package, excluded_substring)

@@ -14,9 +14,10 @@ from src.main import RUNTIME_ERROR, SUCCESS, main, parse_args
 class TestReverseCli(unittest.TestCase):
     """Проверить переключение режима, вывод потребителей и ошибки."""
 
-    def setUp(self):
-        """Подготовить параметры обратного поиска Ubuntu."""
-        self.args = [
+    @property
+    def args(self):
+        """Вернуть независимый набор параметров обратного поиска Ubuntu."""
+        return [
             "--package", "bash", "--repository", "https://example.com",
             "--reverse"
         ]

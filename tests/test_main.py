@@ -17,9 +17,10 @@ CLI_ERROR = 2
 class TestCommandLine(unittest.TestCase):
     """Проверить настройки, ошибки параметров и вывод прямого графа."""
 
-    def setUp(self):
-        """Подготовить допустимый набор параметров реального репозитория."""
-        self.args = [
+    @property
+    def args(self):
+        """Вернуть независимый набор параметров реального репозитория."""
+        return [
             "--package", "bash",
             "--repository", "https://archive.ubuntu.com/ubuntu"
         ]

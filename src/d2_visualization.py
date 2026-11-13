@@ -9,7 +9,6 @@ def generate_d2(graph):
     if not graph:
         return "\n".join(lines + ["# Граф пуст после фильтрации."])
 
-    # Отдельные ключи сохраняют точки и знаки '+' именно в подписях.
     names = dict.fromkeys(graph)
     for dependencies in graph.values():
         names.update(dict.fromkeys(dependencies))
@@ -18,7 +17,6 @@ def generate_d2(graph):
         label = json.dumps(name, ensure_ascii=False)
         lines.append(f"{identifier}: {label}")
 
-    # Повторное ребро D2 создаёт новую связь: удаляем повторы явно.
     for name, dependencies in graph.items():
         for dependency in dict.fromkeys(dependencies):
             lines.append(f"{identifiers[name]} -> {identifiers[dependency]}")

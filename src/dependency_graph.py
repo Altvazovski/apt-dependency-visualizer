@@ -21,7 +21,6 @@ def build_dependency_graph(root, get_dependencies, excluded_substring=""):
             graph[package] = dependencies
             for name in dependencies:
                 if name not in discovered:
-                    # Отмечаем вершину при добавлении в очередь уровня.
                     discovered.add(name)
                     next_level.append(name)
         visit_level(next_level)

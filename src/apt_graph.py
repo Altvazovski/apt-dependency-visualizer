@@ -56,7 +56,6 @@ def get_dependency_names(record):
                 raise ValueError(
                     f"Некорректная зависимость {kind}: {expression}."
                 )
-            # Версия и уточнение архитектуры не являются частью имени вершины.
             names.append(match.group("name"))
     return list(dict.fromkeys(names))
 

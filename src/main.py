@@ -31,7 +31,6 @@ RUNTIME_ERROR = 1
 
 def validate_package(value, test_mode):
     """Проверить имя Ubuntu-пакета или тестовой вершины."""
-    # В тестовом репозитории используются заглавные латинские буквы.
     pattern = r"[A-Z]+" if test_mode else r"[a-z0-9][a-z0-9+.-]+"
     if re.fullmatch(pattern, value):
         return
@@ -49,7 +48,6 @@ def validate_url(value):
         raise ValueError("--repository: URL содержит недопустимые символы.")
     try:
         address = urlsplit(value)
-        # Свойство port дополнительно проверяет формат и диапазон порта.
         _ = address.port
     except ValueError as error:
         raise ValueError("--repository: некорректный URL или порт.") from error
@@ -63,7 +61,6 @@ def validate_file(value):
     try:
         if not path.is_file():
             raise ValueError("--repository: тестовый файл не найден.")
-        # Содержимое графа отдельно проверяет загрузчик JSON.
         with path.open("rb"):
             pass
     except OSError as error:
@@ -102,7 +99,6 @@ def parse_args(argv=None):
         "--repository", required=True,
         help="URL репозитория или путь к тестовому файлу"
     )
-    # Переключатель включается самим присутствием в командной строке.
     parser.add_argument(
         "--test-mode", action="store_true",
         help="Использовать локальный тестовый репозиторий"

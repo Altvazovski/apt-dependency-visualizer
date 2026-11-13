@@ -128,7 +128,6 @@ def extract_dependencies(record):
         value = record.get(name)
         if value is None:
             continue
-        # Запятая разделяет группы, а вертикальная черта внутри — альтернативы.
         for group in value.split(","):
             expression = " ".join(group.split())
             if not expression:
