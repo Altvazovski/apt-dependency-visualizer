@@ -1,4 +1,4 @@
-"""Проверки параметров и вывода первого этапа варианта 14."""
+"""Проверки параметров, вывода зависимостей и ошибок второго этапа."""
 
 from contextlib import redirect_stderr, redirect_stdout
 import io
@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from src.main import SUCCESS, main, parse_args, validate_file
+from src.main import RUNTIME_ERROR, SUCCESS, main, parse_args, validate_file
 
 
 CLI_ERROR = 2
@@ -39,6 +39,17 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(result.exception.code, CLI_ERROR)
         self.assertIn(option, errors.getvalue())
         self.assertNotIn("Traceback", errors.getvalue())
+
+    def run_application(self, args=None, dependencies=None, error=None):
+        """Запустить CLI с подменой загрузки и перехватом обоих потоков."""
+        output, errors = io.StringIO(), io.StringIO()
+        with patch(
+            "src.main.get_direct_dependencies", side_effect=error,
+            return_value=[] if dependencies is None else dependencies
+        ) as load:
+            with redirect_stdout(output), redirect_stderr(errors):
+                code = main(self.args if args is None else args)
+        return code, output.getvalue(), errors.getvalue(), load
 
     def test_default_settings(self):
         """Прочитать обязательные параметры и значения по умолчанию."""
@@ -124,8 +135,8 @@ class TestCommandLine(unittest.TestCase):
             with self.subTest(options=options):
                 self.assert_cli_error(self.args + options, options[0])
 
-    def test_test_repository_and_output(self):
-        """Проверить путь с пробелом, тестовое имя и вывод четырёх настроек."""
+    def test_test_repository_settings(self):
+        """Проверить путь с пробелом и параметры тестового режима."""
         with TemporaryDirectory() as directory:
             path = Path(directory) / "test graph.json"
             path.write_text('{"ABC": []}', encoding="utf-8")
@@ -133,13 +144,11 @@ class TestCommandLine(unittest.TestCase):
                 "--package", "ABC", "--repository", str(path),
                 "--test-mode", "--filter", "B"
             ]
-            with redirect_stdout(io.StringIO()) as output:
-                code = main(args)
-            self.assertEqual(code, SUCCESS)
-            self.assertEqual(output.getvalue().splitlines(), [
-                "package=ABC", f"repository={path}", "test_mode=true",
-                "filter=B"
-            ])
+            settings = parse_args(args)
+            self.assertTrue(settings.test_mode)
+            self.assertEqual(settings.package, "ABC")
+            self.assertEqual(settings.repository, str(path))
+            self.assertEqual(settings.filter, "B")
 
     def test_invalid_test_package_names(self):
         """Отклонить строчные буквы, цифры и знаки в тестовом имени."""
@@ -172,14 +181,64 @@ class TestCommandLine(unittest.TestCase):
                     validate_file("private.json")
 
     def test_main_output(self):
-        """Вывести ровно четыре настройки в формате ключ=значение."""
-        with redirect_stdout(io.StringIO()) as output:
-            code = main(self.args)
+        """Вывести все прямые зависимости с их типами и условиями."""
+        dependencies = [
+            ("Pre-Depends", "libc6 (>= 2.34)"),
+            ("Depends", "helper | other")
+        ]
+        code, output, errors, load = self.run_application(
+            dependencies=dependencies
+        )
         self.assertEqual(code, SUCCESS)
-        self.assertEqual(output.getvalue().splitlines(), [
-            "package=bash", "repository=https://archive.ubuntu.com/ubuntu",
-            "test_mode=false", "filter="
+        self.assertEqual(errors, "")
+        self.assertEqual(output.splitlines(), [
+            "Прямые зависимости пакета bash:",
+            "Pre-Depends: libc6 (>= 2.34)", "Depends: helper | other"
         ])
+        load.assert_called_once_with(
+            "https://archive.ubuntu.com/ubuntu", "bash"
+        )
+
+    def test_no_dependencies(self):
+        """Сообщить об отсутствии обязательных прямых зависимостей."""
+        code, output, errors, _ = self.run_application()
+        self.assertEqual(code, SUCCESS)
+        self.assertEqual(errors, "")
+        self.assertEqual(output.splitlines(), [
+            "Прямые зависимости пакета bash:",
+            "Обязательных прямых зависимостей нет."
+        ])
+
+    def test_runtime_error(self):
+        """Вывести ошибку данных или загрузки в stderr без трассировки."""
+        code, output, errors, _ = self.run_application(
+            error=ValueError("Сервер недоступен")
+        )
+        self.assertEqual(code, RUNTIME_ERROR)
+        self.assertEqual(output, "")
+        self.assertIn("Ошибка: Сервер недоступен", errors)
+        self.assertNotIn("Traceback", errors)
+
+    def test_test_mode_is_next_stage(self):
+        """Не передавать локальный JSON загрузчику реального репозитория."""
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "graph.json"
+            path.write_text('{"A": []}', encoding="utf-8")
+            code, output, errors, load = self.run_application([
+                "--package", "A", "--repository", str(path), "--test-mode"
+            ])
+        self.assertEqual(code, RUNTIME_ERROR)
+        self.assertEqual(output, "")
+        self.assertIn("этапе 3", errors)
+        load.assert_not_called()
+
+    def test_filter_does_not_hide_direct_dependencies(self):
+        """На этапе 2 вывести все прямые зависимости независимо от фильтра."""
+        code, output, _, _ = self.run_application(
+            self.args + ["--filter", "lib"], [("Depends", "libc6")]
+        )
+        self.assertEqual(code, SUCCESS)
+        self.assertIn("Depends: libc6", output)
 
     def test_help(self):
         """Показать справку и успешно завершить работу."""

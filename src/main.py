@@ -1,12 +1,20 @@
-"""Первый этап визуализатора зависимостей Ubuntu: настройки CLI."""
+"""Командная строка визуализатора зависимостей Ubuntu: этап 2."""
 
 import argparse
 from pathlib import Path
 import re
+import sys
 from urllib.parse import urlsplit
 
 
+if __package__:
+    from .apt_repository import get_direct_dependencies
+else:
+    from apt_repository import get_direct_dependencies
+
+
 SUCCESS = 0
+RUNTIME_ERROR = 1
 
 
 def validate_package(value, test_mode):
@@ -43,7 +51,7 @@ def validate_file(value):
     try:
         if not path.is_file():
             raise ValueError("--repository: тестовый файл не найден.")
-        # На первом этапе проверяем доступ, не разбирая содержимое графа.
+        # Структура тестового графа будет проверяться на третьем этапе.
         with path.open("rb"):
             pass
     except OSError as error:
@@ -72,7 +80,7 @@ def validate_args(args):
 def parse_args(argv=None):
     """Прочитать четыре параметра варианта 14 и обработать ошибки."""
     parser = argparse.ArgumentParser(
-        description="Визуализатор зависимостей Ubuntu/apt: этап 1.",
+        description="Визуализатор зависимостей Ubuntu/apt: этап 2.",
         allow_abbrev=False
     )
     parser.add_argument(
@@ -98,19 +106,27 @@ def parse_args(argv=None):
     return args
 
 
-def print_settings(args):
-    """Вывести все пользовательские настройки в формате ключ=значение."""
-    for name in ("package", "repository", "test_mode", "filter"):
-        value = getattr(args, name)
-        if isinstance(value, bool):
-            value = str(value).lower()
-        print(f"{name}={value}")
+def print_dependencies(package, dependencies):
+    """Вывести все обязательные прямые зависимости выбранного пакета."""
+    print(f"Прямые зависимости пакета {package}:")
+    if not dependencies:
+        print("Обязательных прямых зависимостей нет.")
+        return
+    for kind, expression in dependencies:
+        print(f"{kind}: {expression}")
 
 
 def main(argv=None):
-    """Запустить прототип первого этапа и вернуть код завершения."""
+    """Загрузить прямые зависимости и вернуть код завершения."""
     args = parse_args(argv)
-    print_settings(args)
+    try:
+        if args.test_mode:
+            raise ValueError("Режим тестового графа будет добавлен на этапе 3.")
+        dependencies = get_direct_dependencies(args.repository, args.package)
+        print_dependencies(args.package, dependencies)
+    except ValueError as error:
+        print(f"Ошибка: {error}", file=sys.stderr)
+        return RUNTIME_ERROR
     return SUCCESS
 
 
