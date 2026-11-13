@@ -203,8 +203,9 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(code, SUCCESS)
         self.assertEqual(errors, "")
         self.assertEqual(output.splitlines(), [
-            "Граф зависимостей для bash:", "bash -> libc6, helper",
-            "libc6 -> bash", "helper -> нет исходящих связей"
+            "# Граф зависимостей для bash", "direction: right",
+            'n0: "bash"', 'n1: "libc6"', 'n2: "helper"',
+            "n0 -> n1", "n0 -> n2", "n1 -> n0"
         ])
         load.assert_called_once_with(
             "https://archive.ubuntu.com/ubuntu", "bash", ""
@@ -216,7 +217,7 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(code, SUCCESS)
         self.assertEqual(errors, "")
         self.assertEqual(output.splitlines(), [
-            "Граф зависимостей для bash:", "bash -> нет исходящих связей"
+            "# Граф зависимостей для bash", "direction: right", 'n0: "bash"'
         ])
 
     def test_runtime_error(self):
@@ -235,8 +236,9 @@ class TestCommandLine(unittest.TestCase):
         code, output, errors, load = self.run_test_application(graph)
         self.assertEqual(code, SUCCESS)
         self.assertEqual(output.splitlines(), [
-            "Граф зависимостей для A:", "A -> B, C", "B -> C",
-            "C -> нет исходящих связей"
+            "# Граф зависимостей для A", "direction: right",
+            'n0: "A"', 'n1: "B"', 'n2: "C"',
+            "n0 -> n1", "n0 -> n2", "n1 -> n2"
         ])
         self.assertEqual(errors, "")
         load.assert_not_called()
@@ -260,7 +262,9 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(code, SUCCESS)
         self.assertEqual(errors, "")
         self.assertEqual(output.splitlines(), [
-            "Граф зависимостей для A:", "A -> A, B", "B -> C", "C -> A"
+            "# Граф зависимостей для A", "direction: right",
+            'n0: "A"', 'n1: "B"', 'n2: "C"',
+            "n0 -> n0", "n0 -> n1", "n1 -> n2", "n2 -> n0"
         ])
 
     def test_test_mode_filter(self):
@@ -272,7 +276,8 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(code, SUCCESS)
         self.assertEqual(errors, "")
         self.assertEqual(output.splitlines(), [
-            "Граф зависимостей для A:", "A -> C", "C -> нет исходящих связей"
+            "# Граф зависимостей для A", "direction: right",
+            'n0: "A"', 'n1: "C"', "n0 -> n1"
         ])
 
     def test_filtered_test_root(self):
@@ -283,7 +288,8 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(code, SUCCESS)
         self.assertEqual(errors, "")
         self.assertEqual(output.splitlines(), [
-            "Граф зависимостей для A:", "После фильтрации граф пуст."
+            "# Граф зависимостей для A", "direction: right",
+            "# Граф пуст после фильтрации."
         ])
 
     def test_filtered_apt_root(self):
@@ -294,7 +300,8 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(code, SUCCESS)
         self.assertEqual(errors, "")
         self.assertEqual(output.splitlines(), [
-            "Граф зависимостей для bash:", "После фильтрации граф пуст."
+            "# Граф зависимостей для bash", "direction: right",
+            "# Граф пуст после фильтрации."
         ])
 
     def test_missing_test_root(self):

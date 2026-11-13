@@ -1,4 +1,4 @@
-"""Командная строка визуализатора зависимостей Ubuntu: этап 4."""
+"""Командная строка визуализатора зависимостей Ubuntu: этап 5."""
 
 import argparse
 from pathlib import Path
@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 
 if __package__:
+    from .d2_visualization import generate_d2
     from .apt_graph import build_apt_dependency_graph
     from .dependency_graph import build_test_dependency_graph
     from .reverse_dependencies import (
@@ -15,6 +16,7 @@ if __package__:
     )
     from .test_repository import load_test_repository
 else:
+    from d2_visualization import generate_d2
     from apt_graph import build_apt_dependency_graph
     from dependency_graph import build_test_dependency_graph
     from reverse_dependencies import (
@@ -90,7 +92,7 @@ def validate_args(args):
 def parse_args(argv=None):
     """Прочитать параметры варианта 14 и режим обратного поиска."""
     parser = argparse.ArgumentParser(
-        description="Визуализатор зависимостей Ubuntu/apt: этап 4.",
+        description="Визуализатор зависимостей Ubuntu/apt: этап 5.",
         allow_abbrev=False
     )
     parser.add_argument(
@@ -121,14 +123,9 @@ def parse_args(argv=None):
 
 
 def print_graph(root, graph):
-    """Вывести связи достижимого графа в порядке уровней BFS."""
-    print(f"Граф зависимостей для {root}:")
-    if not graph:
-        print("После фильтрации граф пуст.")
-        return
-    for package, dependencies in graph.items():
-        targets = ", ".join(dependencies) or "нет исходящих связей"
-        print(f"{package} -> {targets}")
+    """Вывести только D2: комментарий с корнем, вершины и связи."""
+    print(f"# Граф зависимостей для {root}")
+    print(generate_d2(graph))
 
 
 def print_reverse_dependencies(package, packages, excluded_substring=""):
