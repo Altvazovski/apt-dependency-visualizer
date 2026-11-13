@@ -1,7 +1,8 @@
-"""Проверки параметров, вывода зависимостей и ошибок второго этапа."""
+"""Проверки параметров, вывода графа и ошибок третьего этапа."""
 
 from contextlib import redirect_stderr, redirect_stdout
 import io
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -40,16 +41,28 @@ class TestCommandLine(unittest.TestCase):
         self.assertIn(option, errors.getvalue())
         self.assertNotIn("Traceback", errors.getvalue())
 
-    def run_application(self, args=None, dependencies=None, error=None):
-        """Запустить CLI с подменой загрузки и перехватом обоих потоков."""
+    def run_application(self, args=None, graph=None, error=None):
+        """Запустить CLI с подменой графа Ubuntu и перехватом вывода."""
         output, errors = io.StringIO(), io.StringIO()
         with patch(
-            "src.main.get_direct_dependencies", side_effect=error,
-            return_value=[] if dependencies is None else dependencies
+            "src.main.build_apt_dependency_graph", side_effect=error,
+            return_value={"bash": []} if graph is None else graph
         ) as load:
             with redirect_stdout(output), redirect_stderr(errors):
                 code = main(self.args if args is None else args)
         return code, output.getvalue(), errors.getvalue(), load
+
+    def run_test_application(self, graph, options=None, raw_text=None):
+        """Запустить тестовый режим с настоящим временным JSON-файлом."""
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "graph.json"
+            text = json.dumps(graph) if raw_text is None else raw_text
+            path.write_text(text, encoding="utf-8")
+            args = [
+                "--package", "A", "--repository", str(path), "--test-mode"
+            ]
+            args.extend([] if options is None else options)
+            return self.run_application(args)
 
     def test_default_settings(self):
         """Прочитать обязательные параметры и значения по умолчанию."""
@@ -181,32 +194,26 @@ class TestCommandLine(unittest.TestCase):
                     validate_file("private.json")
 
     def test_main_output(self):
-        """Вывести все прямые зависимости с их типами и условиями."""
-        dependencies = [
-            ("Pre-Depends", "libc6 (>= 2.34)"),
-            ("Depends", "helper | other")
-        ]
-        code, output, errors, load = self.run_application(
-            dependencies=dependencies
-        )
+        """Вывести связи реального графа, сохранив цикл и конечную вершину."""
+        graph = {"bash": ["libc6", "helper"], "libc6": ["bash"], "helper": []}
+        code, output, errors, load = self.run_application(graph=graph)
         self.assertEqual(code, SUCCESS)
         self.assertEqual(errors, "")
         self.assertEqual(output.splitlines(), [
-            "Прямые зависимости пакета bash:",
-            "Pre-Depends: libc6 (>= 2.34)", "Depends: helper | other"
+            "Граф зависимостей для bash:", "bash -> libc6, helper",
+            "libc6 -> bash", "helper -> нет исходящих связей"
         ])
         load.assert_called_once_with(
-            "https://archive.ubuntu.com/ubuntu", "bash"
+            "https://archive.ubuntu.com/ubuntu", "bash", ""
         )
 
     def test_no_dependencies(self):
-        """Сообщить об отсутствии обязательных прямых зависимостей."""
+        """Сохранить корень графа без исходящих связей."""
         code, output, errors, _ = self.run_application()
         self.assertEqual(code, SUCCESS)
         self.assertEqual(errors, "")
         self.assertEqual(output.splitlines(), [
-            "Прямые зависимости пакета bash:",
-            "Обязательных прямых зависимостей нет."
+            "Граф зависимостей для bash:", "bash -> нет исходящих связей"
         ])
 
     def test_runtime_error(self):
@@ -219,26 +226,99 @@ class TestCommandLine(unittest.TestCase):
         self.assertIn("Ошибка: Сервер недоступен", errors)
         self.assertNotIn("Traceback", errors)
 
-    def test_test_mode_is_next_stage(self):
-        """Не передавать локальный JSON загрузчику реального репозитория."""
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "graph.json"
-            path.write_text('{"A": []}', encoding="utf-8")
-            code, output, errors, load = self.run_application([
-                "--package", "A", "--repository", str(path), "--test-mode"
-            ])
-        self.assertEqual(code, RUNTIME_ERROR)
-        self.assertEqual(output, "")
-        self.assertIn("этапе 3", errors)
+    def test_test_mode_graph(self):
+        """Построить достижимый граф из JSON без сетевого обращения."""
+        graph = {"A": ["B", "C"], "B": ["C"], "C": []}
+        code, output, errors, load = self.run_test_application(graph)
+        self.assertEqual(code, SUCCESS)
+        self.assertEqual(output.splitlines(), [
+            "Граф зависимостей для A:", "A -> B, C", "B -> C",
+            "C -> нет исходящих связей"
+        ])
+        self.assertEqual(errors, "")
         load.assert_not_called()
 
-    def test_filter_does_not_hide_direct_dependencies(self):
-        """На этапе 2 вывести все прямые зависимости независимо от фильтра."""
-        code, output, _, _ = self.run_application(
-            self.args + ["--filter", "lib"], [("Depends", "libc6")]
+    def test_apt_filter_parameter(self):
+        """Передать подстроку фильтра построителю графа Ubuntu."""
+        code, _, errors, load = self.run_application(
+            self.args + ["--filter", "lib"]
         )
         self.assertEqual(code, SUCCESS)
-        self.assertIn("Depends: libc6", output)
+        self.assertEqual(errors, "")
+        load.assert_called_once_with(
+            "https://archive.ubuntu.com/ubuntu", "bash", "lib"
+        )
+
+    def test_test_mode_cycle(self):
+        """Сохранить циклические рёбра в выводе без зависания программы."""
+        code, output, errors, _ = self.run_test_application({
+            "A": ["A", "B"], "B": ["C"], "C": ["A"]
+        })
+        self.assertEqual(code, SUCCESS)
+        self.assertEqual(errors, "")
+        self.assertEqual(output.splitlines(), [
+            "Граф зависимостей для A:", "A -> A, B", "B -> C", "C -> A"
+        ])
+
+    def test_test_mode_filter(self):
+        """Остановить обход ветки исключённой вершины."""
+        graph = {"A": ["B", "C"], "B": ["D"], "C": [], "D": []}
+        code, output, errors, _ = self.run_test_application(
+            graph, ["--filter", "B"]
+        )
+        self.assertEqual(code, SUCCESS)
+        self.assertEqual(errors, "")
+        self.assertEqual(output.splitlines(), [
+            "Граф зависимостей для A:", "A -> C", "C -> нет исходящих связей"
+        ])
+
+    def test_filtered_test_root(self):
+        """Вывести пустой граф после исключения начальной вершины."""
+        code, output, errors, _ = self.run_test_application(
+            {"A": []}, ["--filter", "A"]
+        )
+        self.assertEqual(code, SUCCESS)
+        self.assertEqual(errors, "")
+        self.assertEqual(output.splitlines(), [
+            "Граф зависимостей для A:", "После фильтрации граф пуст."
+        ])
+
+    def test_filtered_apt_root(self):
+        """Вывести пустой граф реального пакета после фильтрации."""
+        code, output, errors, _ = self.run_application(
+            self.args + ["--filter", "bash"], graph={}
+        )
+        self.assertEqual(code, SUCCESS)
+        self.assertEqual(errors, "")
+        self.assertEqual(output.splitlines(), [
+            "Граф зависимостей для bash:", "После фильтрации граф пуст."
+        ])
+
+    def test_missing_test_root(self):
+        """Показать ошибку отсутствующего корня без частичного результата."""
+        code, output, errors, _ = self.run_test_application({"B": []})
+        self.assertEqual(code, RUNTIME_ERROR)
+        self.assertEqual(output, "")
+        self.assertIn("A отсутствует", errors)
+
+    def test_invalid_test_json(self):
+        """Обработать синтаксическую ошибку и повтор ключа JSON."""
+        for text in ('{"A": [', '{"A": [], "A": []}'):
+            with self.subTest(text=text):
+                code, output, errors, _ = self.run_test_application(
+                    {}, raw_text=text
+                )
+                self.assertEqual(code, RUNTIME_ERROR)
+                self.assertEqual(output, "")
+                self.assertIn("Ошибка:", errors)
+                self.assertNotIn("Traceback", errors)
+
+    def test_invalid_test_reference(self):
+        """Сообщить о ссылке на пакет, не описанный в тестовом JSON."""
+        code, output, errors, _ = self.run_test_application({"A": ["B"]})
+        self.assertEqual(code, RUNTIME_ERROR)
+        self.assertEqual(output, "")
+        self.assertIn("B не описан", errors)
 
     def test_help(self):
         """Показать справку и успешно завершить работу."""

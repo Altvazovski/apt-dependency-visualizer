@@ -1,4 +1,4 @@
-"""Командная строка визуализатора зависимостей Ubuntu: этап 2."""
+"""Командная строка визуализатора зависимостей Ubuntu: этап 3."""
 
 import argparse
 from pathlib import Path
@@ -8,9 +8,13 @@ from urllib.parse import urlsplit
 
 
 if __package__:
-    from .apt_repository import get_direct_dependencies
+    from .apt_graph import build_apt_dependency_graph
+    from .dependency_graph import build_test_dependency_graph
+    from .test_repository import load_test_repository
 else:
-    from apt_repository import get_direct_dependencies
+    from apt_graph import build_apt_dependency_graph
+    from dependency_graph import build_test_dependency_graph
+    from test_repository import load_test_repository
 
 
 SUCCESS = 0
@@ -51,7 +55,7 @@ def validate_file(value):
     try:
         if not path.is_file():
             raise ValueError("--repository: тестовый файл не найден.")
-        # Структура тестового графа будет проверяться на третьем этапе.
+        # Содержимое графа отдельно проверяет загрузчик JSON.
         with path.open("rb"):
             pass
     except OSError as error:
@@ -80,7 +84,7 @@ def validate_args(args):
 def parse_args(argv=None):
     """Прочитать четыре параметра варианта 14 и обработать ошибки."""
     parser = argparse.ArgumentParser(
-        description="Визуализатор зависимостей Ubuntu/apt: этап 2.",
+        description="Визуализатор зависимостей Ubuntu/apt: этап 3.",
         allow_abbrev=False
     )
     parser.add_argument(
@@ -106,24 +110,40 @@ def parse_args(argv=None):
     return args
 
 
-def print_dependencies(package, dependencies):
-    """Вывести все обязательные прямые зависимости выбранного пакета."""
-    print(f"Прямые зависимости пакета {package}:")
-    if not dependencies:
-        print("Обязательных прямых зависимостей нет.")
+def print_graph(root, graph):
+    """Вывести связи достижимого графа в порядке уровней BFS."""
+    print(f"Граф зависимостей для {root}:")
+    if not graph:
+        print("После фильтрации граф пуст.")
         return
-    for kind, expression in dependencies:
-        print(f"{kind}: {expression}")
+    for package, dependencies in graph.items():
+        targets = ", ".join(dependencies) or "нет исходящих связей"
+        print(f"{package} -> {targets}")
+
+
+def run_test_mode(args):
+    """Загрузить тестовый репозиторий и вывести достижимый граф."""
+    repository = load_test_repository(args.repository)
+    graph = build_test_dependency_graph(repository, args.package, args.filter)
+    print_graph(args.package, graph)
+
+
+def run_apt_mode(args):
+    """Один раз загрузить индекс Ubuntu и вывести граф зависимостей."""
+    graph = build_apt_dependency_graph(
+        args.repository, args.package, args.filter
+    )
+    print_graph(args.package, graph)
 
 
 def main(argv=None):
-    """Загрузить прямые зависимости и вернуть код завершения."""
+    """Построить граф в выбранном режиме и вернуть код завершения."""
     args = parse_args(argv)
     try:
         if args.test_mode:
-            raise ValueError("Режим тестового графа будет добавлен на этапе 3.")
-        dependencies = get_direct_dependencies(args.repository, args.package)
-        print_dependencies(args.package, dependencies)
+            run_test_mode(args)
+        else:
+            run_apt_mode(args)
     except ValueError as error:
         print(f"Ошибка: {error}", file=sys.stderr)
         return RUNTIME_ERROR
