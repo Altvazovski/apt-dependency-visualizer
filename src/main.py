@@ -1,4 +1,4 @@
-"""Командная строка визуализатора зависимостей Ubuntu: этап 3."""
+"""Командная строка визуализатора зависимостей Ubuntu: этап 4."""
 
 import argparse
 from pathlib import Path
@@ -10,10 +10,16 @@ from urllib.parse import urlsplit
 if __package__:
     from .apt_graph import build_apt_dependency_graph
     from .dependency_graph import build_test_dependency_graph
+    from .reverse_dependencies import (
+        find_reverse_dependencies, get_apt_reverse_dependencies
+    )
     from .test_repository import load_test_repository
 else:
     from apt_graph import build_apt_dependency_graph
     from dependency_graph import build_test_dependency_graph
+    from reverse_dependencies import (
+        find_reverse_dependencies, get_apt_reverse_dependencies
+    )
     from test_repository import load_test_repository
 
 
@@ -82,9 +88,9 @@ def validate_args(args):
 
 
 def parse_args(argv=None):
-    """Прочитать четыре параметра варианта 14 и обработать ошибки."""
+    """Прочитать параметры варианта 14 и режим обратного поиска."""
     parser = argparse.ArgumentParser(
-        description="Визуализатор зависимостей Ubuntu/apt: этап 3.",
+        description="Визуализатор зависимостей Ubuntu/apt: этап 4.",
         allow_abbrev=False
     )
     parser.add_argument(
@@ -101,6 +107,10 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--filter", default="", help="Подстрока для исключения пакетов"
+    )
+    parser.add_argument(
+        "--reverse", action="store_true",
+        help="Вывести пакеты, зависящие от указанного --package"
     )
     args = parser.parse_args(argv)
     try:
@@ -121,15 +131,39 @@ def print_graph(root, graph):
         print(f"{package} -> {targets}")
 
 
+def print_reverse_dependencies(package, packages, excluded_substring=""):
+    """Вывести потребителей, отсутствие результата или исключение цели."""
+    print(f"Обратные зависимости для {package}:")
+    if excluded_substring and excluded_substring in package:
+        print("Целевой пакет исключён фильтром.")
+    elif not packages:
+        print("Обратных зависимостей в выбранном репозитории нет.")
+    else:
+        for name in packages:
+            print(f"- {name}")
+
+
 def run_test_mode(args):
-    """Загрузить тестовый репозиторий и вывести достижимый граф."""
+    """Прочитать JSON и выполнить прямой или обратный обход."""
     repository = load_test_repository(args.repository)
+    if args.reverse:
+        packages = find_reverse_dependencies(
+            repository, args.package, args.filter
+        )
+        print_reverse_dependencies(args.package, packages, args.filter)
+        return
     graph = build_test_dependency_graph(repository, args.package, args.filter)
     print_graph(args.package, graph)
 
 
 def run_apt_mode(args):
-    """Один раз загрузить индекс Ubuntu и вывести граф зависимостей."""
+    """Загрузить индекс Ubuntu и выполнить выбранный поиск."""
+    if args.reverse:
+        packages = get_apt_reverse_dependencies(
+            args.repository, args.package, args.filter
+        )
+        print_reverse_dependencies(args.package, packages, args.filter)
+        return
     graph = build_apt_dependency_graph(
         args.repository, args.package, args.filter
     )
@@ -137,7 +171,7 @@ def run_apt_mode(args):
 
 
 def main(argv=None):
-    """Построить граф в выбранном режиме и вернуть код завершения."""
+    """Выполнить выбранную операцию и вернуть код завершения."""
     args = parse_args(argv)
     try:
         if args.test_mode:

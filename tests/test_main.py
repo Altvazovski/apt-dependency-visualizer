@@ -1,4 +1,4 @@
-"""Проверки параметров, вывода графа и ошибок третьего этапа."""
+"""Проверки параметров и вывода прямого графа зависимостей."""
 
 from contextlib import redirect_stderr, redirect_stdout
 import io
@@ -15,7 +15,7 @@ CLI_ERROR = 2
 
 
 class TestCommandLine(unittest.TestCase):
-    """Проверить настройки, ошибки всех параметров и вывод прототипа."""
+    """Проверить настройки, ошибки параметров и вывод прямого графа."""
 
     def setUp(self):
         """Подготовить допустимый набор параметров реального репозитория."""
@@ -70,6 +70,7 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(args.package, "bash")
         self.assertEqual(args.repository, "https://archive.ubuntu.com/ubuntu")
         self.assertFalse(args.test_mode)
+        self.assertFalse(args.reverse)
         self.assertEqual(args.filter, "")
 
     def test_valid_package_names(self):
@@ -136,8 +137,10 @@ class TestCommandLine(unittest.TestCase):
                 self.assert_cli_error(self.args + [option], option)
 
     def test_flag_does_not_accept_value(self):
-        """Отклонить значение после флага тестового режима."""
-        self.assert_cli_error(self.args + ["--test-mode=false"], "--test-mode")
+        """Отклонить значения после переключателей режимов."""
+        for option in ("--test-mode", "--reverse"):
+            with self.subTest(option=option):
+                self.assert_cli_error(self.args + [option + "=false"], option)
 
     def test_unknown_options(self):
         """Отклонить неизвестные параметры и сокращённые имена."""
@@ -326,7 +329,9 @@ class TestCommandLine(unittest.TestCase):
             with self.assertRaises(SystemExit) as result:
                 parse_args(["--help"])
         self.assertEqual(result.exception.code, SUCCESS)
-        for option in ("--package", "--repository", "--test-mode", "--filter"):
+        for option in (
+            "--package", "--repository", "--test-mode", "--filter", "--reverse"
+        ):
             self.assertIn(option, output.getvalue())
 
 
